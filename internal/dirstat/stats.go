@@ -25,6 +25,8 @@ type FileStat struct {
 }
 
 // Stats holds aggregate statistics for a directory walk.
+//
+//nolint:tagliatelle // Using snake_case for JSON compatibility
 type Stats struct {
 	// FileCount is the total number of files or directories analyzed.
 	FileCount int64 `json:"file_count"`
@@ -99,6 +101,7 @@ func newCollector(topN int, directoryMode bool) *collector {
 func (c *collector) addError() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.errorCount++
 }
 
@@ -112,6 +115,7 @@ func (c *collector) add(path string, size int64, ext string) {
 	defer c.mu.Unlock()
 
 	c.totalBytes += size
+
 	isDirectoryMode := ext == "DIR:"
 
 	if isDirectoryMode {
@@ -119,14 +123,20 @@ func (c *collector) add(path string, size int64, ext string) {
 		if stat.Count == 0 {
 			c.fileCount++
 		}
+
 		stat.Count++
+
 		stat.Size += size
+
 		c.extStats[path] = stat
 	} else {
 		c.fileCount++
+
 		stat := c.extStats[ext]
 		stat.Count++
+
 		stat.Size += size
+
 		c.extStats[ext] = stat
 
 		// Collect all files, we'll sort and trim later
@@ -141,9 +151,11 @@ func (c *collector) finalize() *Stats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var extStats map[string]ExtStat
-	var topFiles []FileStat
-	var fileCount int64
+	var (
+		extStats  map[string]ExtStat
+		topFiles  []FileStat
+		fileCount int64
+	)
 
 	if c.directoryMode {
 		// Build slice of directories by size
@@ -156,6 +168,7 @@ func (c *collector) finalize() *Stats {
 		sort.Slice(topFiles, func(i, j int) bool {
 			return topFiles[i].Size > topFiles[j].Size
 		})
+
 		if len(topFiles) > c.topN {
 			topFiles = topFiles[:c.topN]
 		}
@@ -174,6 +187,7 @@ func (c *collector) finalize() *Stats {
 		sort.Slice(c.topFiles, func(i, j int) bool {
 			return c.topFiles[i].Size > c.topFiles[j].Size
 		})
+
 		if len(c.topFiles) > c.topN {
 			c.topFiles = c.topFiles[:c.topN]
 		}

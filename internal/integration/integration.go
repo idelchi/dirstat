@@ -26,6 +26,7 @@ func Render() (string, error) {
 
 	// Then use text/template to substitute the zsh path
 	var rendered string
+
 	tmpl, err := template.New("zsh-fzf").Parse(ZshFzf)
 	if err != nil {
 		return "", err

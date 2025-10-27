@@ -1,11 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 
-	"github.com/dustin/go-humanize"
 	"github.com/MakeNowJust/heredoc/v2"
+	"github.com/dustin/go-humanize"
 	"github.com/spf13/pflag"
 
 	"github.com/idelchi/dirstat/internal/dirstat"
@@ -23,9 +24,12 @@ func New(version string) CLI {
 }
 
 // DefaultExcludes contains the default exclusion patterns.
+//
+//nolint:gochecknoglobals // Config constant
 var DefaultExcludes = []string{`.*\.git/.*`, `.*node_modules/.*`}
 
 func help() {
+	//nolint:forbidigo // Help output to console
 	fmt.Println(heredoc.Doc(`
 		dirstat analyzes directory contents and reports statistics by file extension.
 
@@ -50,12 +54,20 @@ func help() {
 
 // Execute runs the CLI with the provided arguments.
 func (c CLI) Execute() error {
-	var options dirstat.Options
-	var minSizeStr string
+	var (
+		options    dirstat.Options
+		minSizeStr string
+	)
 
 	allowedOutputs := []string{"table", "json"}
 
-	pflag.StringSliceVarP(&options.Extensions, "ext", "x", []string{}, "File suffixes to include (e.g., .go,.md). Use '!' prefix to exclude (e.g., !.log,!_test.go)")
+	pflag.StringSliceVarP(
+		&options.Extensions,
+		"ext",
+		"x",
+		[]string{},
+		"File suffixes to include (e.g., .go,.md). Use '!' prefix to exclude (e.g., !.log,!_test.go)",
+	)
 	pflag.StringVar(&minSizeStr, "min-size", "0KB", "Minimum file size (e.g., 1KB)")
 	pflag.IntVarP(&options.TopN, "top", "t", 10, "Number of top files to display")
 	pflag.StringVarP(&options.Output, "output", "o", "table", "Output format: json or table")
@@ -71,7 +83,9 @@ func (c CLI) Execute() error {
 	pflag.Parse()
 
 	if options.Version {
+		//nolint:forbidigo // Version output to console
 		fmt.Println(c.version)
+
 		return nil
 	}
 
@@ -81,6 +95,7 @@ func (c CLI) Execute() error {
 			return fmt.Errorf("rendering integration script: %w", err)
 		}
 
+		//nolint:forbidigo // Integration script output to console
 		fmt.Println(rendered)
 
 		return nil
@@ -91,7 +106,7 @@ func (c CLI) Execute() error {
 	}
 
 	if options.Depth < 0 {
-		return fmt.Errorf("depth cannot be negative")
+		return errors.New("depth cannot be negative")
 	}
 
 	if pflag.NArg() == 0 {
@@ -106,7 +121,8 @@ func (c CLI) Execute() error {
 		if err != nil {
 			return fmt.Errorf("invalid min-size: %w", err)
 		}
-		options.MinSize = int64(size)
+
+		options.MinSize = int64(size) //nolint:gosec // Size conversion from humanize is safe
 	}
 
 	// Clear default excludes if using dirs mode and exclude flag wasn't changed

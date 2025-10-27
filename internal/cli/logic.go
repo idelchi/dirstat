@@ -20,7 +20,8 @@ func logic(options dirstat.Options) error {
 	ctx := context.Background()
 
 	// Simple progress callback that prints directly to stderr
-	var progressHook func(files int64, bytes int64)
+	var progressHook func(files, bytes int64)
+
 	if enableProgress {
 		// Hide cursor for in-place updates; restore on exit.
 		fmt.Fprint(os.Stderr, "\033[?25l")
@@ -28,7 +29,7 @@ func logic(options dirstat.Options) error {
 
 		progressHook = func(files, bytes int64) {
 			msg := fmt.Sprintf("Scanning… %d files, %s",
-				files, humanize.IBytes(uint64(bytes)))
+				files, humanize.IBytes(uint64(bytes))) //nolint:gosec // Bytes is always positive
 			fmt.Fprintf(os.Stderr, "\r\033[2K%s\r", msg)
 		}
 	}
