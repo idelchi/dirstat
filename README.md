@@ -51,18 +51,8 @@ dirstat --ext '!.log'
 ```
 
 ```sh
-# Filter by minimum file size
-dirstat --min-size 1MB
-```
-
-```sh
 # Custom exclusion patterns (regex)
 dirstat --exclude '.*test.*' --exclude '.*\.tmp'
-```
-
-```sh
-# JSON output for scripting
-dirstat --output json | jq '.top_files[0]'
 ```
 
 ```sh
@@ -226,9 +216,6 @@ Scan for large build outputs and interactively remove them with `-I`.
 
 **Analyze project structure**
 Use `--dirs` to see space distribution across directory hierarchies.
-
-**Automate cleanup scripts**
-Use `--output json` to feed statistics into automated cleanup workflows.
 
 ## Demo
 
