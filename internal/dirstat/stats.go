@@ -1,8 +1,8 @@
 package dirstat
 
 import (
-	"container/heap"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -44,34 +44,7 @@ type Stats struct {
 	TopN int `json:"top_n"`
 }
 
-// topHeap is a min‑heap of FileStat based on Size. It implements
-// heap.Interface.
-type topHeap []FileStat
-
-func (h topHeap) Len() int           { return len(h) }
-func (h topHeap) Less(i, j int) bool { return h[i].Size < h[j].Size }
-func (h topHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-
-func (h *topHeap) Push(x any) {
-	*h = append(*h, x.(FileStat))
-}
-
-func (h *topHeap) Pop() any {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[:n-1]
-	return x
-}
-
-// newTopHeap creates & initializes a min‑heap for top‑N tracking.
-func newTopHeap() *topHeap {
-	h := &topHeap{}
-	heap.Init(h)
-	return h
-}
-
-// Options configures directory analysis.
+// Options configures directory analysis and CLI behavior.
 type Options struct {
 	// Path is the directory to analyze.
 	Path string
@@ -89,6 +62,14 @@ type Options struct {
 	DirsMode bool
 	// ProgressInterval controls progress callback cadence.
 	ProgressInterval time.Duration
+	// Debug indicates whether debug output is enabled.
+	Debug bool
+	// Output represents output format (table or json).
+	Output string
+	// Version indicates whether to show version and exit.
+	Version bool
+	// Integration indicates whether to output integration script.
+	Integration bool
 }
 
 // collector aggregates statistics from concurrent fastwalk callbacks using a mutex.
@@ -97,7 +78,7 @@ type collector struct {
 	topN          int
 	directoryMode bool
 	extStats      map[string]ExtStat
-	topFiles      *topHeap
+	topFiles      []FileStat
 	fileCount     int64
 	totalBytes    int64
 	errorCount    int64
@@ -109,8 +90,16 @@ func newCollector(topN int, directoryMode bool) *collector {
 		topN:          topN,
 		directoryMode: directoryMode,
 		extStats:      make(map[string]ExtStat),
-		topFiles:      newTopHeap(),
+		topFiles:      make([]FileStat, 0),
 	}
+}
+
+// addError increments the error counter. This operation is protected by a mutex
+// since fastwalk calls the callback from multiple goroutines concurrently.
+func (c *collector) addError() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.errorCount++
 }
 
 // add records a file or directory. This operation is protected by a mutex
@@ -140,13 +129,8 @@ func (c *collector) add(path string, size int64, ext string) {
 		stat.Size += size
 		c.extStats[ext] = stat
 
-		// Update top files heap
-		if c.topFiles.Len() < c.topN {
-			heap.Push(c.topFiles, FileStat{Path: path, Size: size})
-		} else if size > (*c.topFiles)[0].Size {
-			heap.Pop(c.topFiles)
-			heap.Push(c.topFiles, FileStat{Path: path, Size: size})
-		}
+		// Collect all files, we'll sort and trim later
+		c.topFiles = append(c.topFiles, FileStat{Path: path, Size: size})
 	}
 }
 
@@ -162,20 +146,23 @@ func (c *collector) finalize() *Stats {
 	var fileCount int64
 
 	if c.directoryMode {
-		// Build heap of directories by size
-		dirHeap := newTopHeap()
+		// Build slice of directories by size
+		topFiles = make([]FileStat, 0, len(c.extStats))
 		for dirPath, stat := range c.extStats {
-			if dirHeap.Len() < c.topN {
-				heap.Push(dirHeap, FileStat{Path: dirPath, Size: stat.Size})
-			} else if stat.Size > (*dirHeap)[0].Size {
-				heap.Pop(dirHeap)
-				heap.Push(dirHeap, FileStat{Path: dirPath, Size: stat.Size})
-			}
+			topFiles = append(topFiles, FileStat{Path: dirPath, Size: stat.Size})
 		}
 
-		topFiles = make([]FileStat, dirHeap.Len())
-		for i := 0; i < len(topFiles); i++ {
-			topFiles[i] = heap.Pop(dirHeap).(FileStat)
+		// Sort by size (largest first) and trim to top N
+		sort.Slice(topFiles, func(i, j int) bool {
+			return topFiles[i].Size > topFiles[j].Size
+		})
+		if len(topFiles) > c.topN {
+			topFiles = topFiles[:c.topN]
+		}
+
+		// Reverse for display (smallest first, displayed in reverse)
+		for i, j := 0, len(topFiles)-1; i < j; i, j = i+1, j-1 {
+			topFiles[i], topFiles[j] = topFiles[j], topFiles[i]
 		}
 
 		extStats = make(map[string]ExtStat)
@@ -183,10 +170,18 @@ func (c *collector) finalize() *Stats {
 	} else {
 		extStats = c.extStats
 
-		// Extract top files from heap
-		topFiles = make([]FileStat, c.topFiles.Len())
-		for i := 0; i < len(topFiles); i++ {
-			topFiles[i] = heap.Pop(c.topFiles).(FileStat)
+		// Sort by size (largest first) and trim to top N
+		sort.Slice(c.topFiles, func(i, j int) bool {
+			return c.topFiles[i].Size > c.topFiles[j].Size
+		})
+		if len(c.topFiles) > c.topN {
+			c.topFiles = c.topFiles[:c.topN]
+		}
+
+		// Reverse for display (smallest first, displayed in reverse)
+		topFiles = make([]FileStat, len(c.topFiles))
+		for i := range c.topFiles {
+			topFiles[i] = c.topFiles[len(c.topFiles)-1-i]
 		}
 
 		fileCount = c.fileCount

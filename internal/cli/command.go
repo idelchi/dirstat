@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/dustin/go-humanize"
 	"github.com/MakeNowJust/heredoc/v2"
-	"github.com/idelchi/dirstat/internal/integration"
 	"github.com/spf13/pflag"
+
+	"github.com/idelchi/dirstat/internal/dirstat"
+	"github.com/idelchi/dirstat/internal/integration"
 )
 
 // CLI represents the command-line interface.
@@ -21,32 +24,6 @@ func New(version string) CLI {
 
 // DefaultExcludes contains the default exclusion patterns.
 var DefaultExcludes = []string{`.*\.git/.*`, `.*node_modules/.*`}
-
-// Options represents the CLI options.
-type Options struct {
-	// Path represents input directory paths.
-	Path []string
-	// Exts represents file extensions to include.
-	Exts []string
-	// Excludes represents regex patterns to exclude.
-	Excludes []string
-	// MinSize represents minimum file size as a string (e.g., "1KB").
-	MinSize string
-	// TopN represents number of top files to display.
-	TopN int
-	// Output represents output format (table or json).
-	Output string
-	// Depth represents maximum traversal depth (0 = unlimited).
-	Depth int
-	// Dirs represents whether to analyze directories instead of files.
-	Dirs bool
-	// Debug represents whether debug output is enabled.
-	Debug bool
-	// Version represents whether to show version and exit.
-	Version bool
-	// Integration represents whether to output integration script.
-	Integration bool
-}
 
 func help() {
 	fmt.Println(heredoc.Doc(`
@@ -73,17 +50,18 @@ func help() {
 
 // Execute runs the CLI with the provided arguments.
 func (c CLI) Execute() error {
-	var options Options
+	var options dirstat.Options
+	var minSizeStr string
 
 	allowedOutputs := []string{"table", "json"}
 
-	pflag.StringSliceVarP(&options.Exts, "ext", "x", []string{}, "File suffixes to include (e.g., .go,.md). Use '!' prefix to exclude (e.g., !.log,!_test.go)")
-	pflag.StringVar(&options.MinSize, "min-size", "0KB", "Minimum file size (e.g., 1KB)")
+	pflag.StringSliceVarP(&options.Extensions, "ext", "x", []string{}, "File suffixes to include (e.g., .go,.md). Use '!' prefix to exclude (e.g., !.log,!_test.go)")
+	pflag.StringVar(&minSizeStr, "min-size", "0KB", "Minimum file size (e.g., 1KB)")
 	pflag.IntVarP(&options.TopN, "top", "t", 10, "Number of top files to display")
 	pflag.StringVarP(&options.Output, "output", "o", "table", "Output format: json or table")
 	pflag.StringSliceVarP(&options.Excludes, "exclude", "e", DefaultExcludes, "Regex patterns to exclude")
 	pflag.IntVarP(&options.Depth, "depth", "d", 0, "Maximum traversal depth (0=unlimited)")
-	pflag.BoolVar(&options.Dirs, "dirs", false, "Analyze directories instead of individual files")
+	pflag.BoolVar(&options.DirsMode, "dirs", false, "Analyze directories instead of individual files")
 	pflag.BoolVar(&options.Debug, "debug", false, "Enable debug output")
 	pflag.BoolVarP(&options.Version, "version", "v", false, "Show version and exit")
 	pflag.BoolVarP(&options.Integration, "init", "i", false, "Output init script for shell usage")
@@ -117,17 +95,22 @@ func (c CLI) Execute() error {
 	}
 
 	if pflag.NArg() == 0 {
-		options.Path = []string{"."}
+		options.Path = "."
 	} else {
-		options.Path = pflag.Args()
+		options.Path = pflag.Args()[0]
 	}
 
-	if options.Debug {
-		// debug remains independent of progress display
+	// Parse minSize string to bytes
+	if minSizeStr != "" {
+		size, err := humanize.ParseBytes(minSizeStr)
+		if err != nil {
+			return fmt.Errorf("invalid min-size: %w", err)
+		}
+		options.MinSize = int64(size)
 	}
 
 	// Clear default excludes if using dirs mode and exclude flag wasn't changed
-	if !pflag.Lookup("exclude").Changed && options.Dirs {
+	if !pflag.Lookup("exclude").Changed && options.DirsMode {
 		options.Excludes = []string{}
 	}
 

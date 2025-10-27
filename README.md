@@ -89,7 +89,7 @@ dirstat --dirs --depth 2
 
 ### Table (default)
 
-```
+```text
 Top extensions:
   3) .txt:     12 files, 123 KiB (5.1%)
   2) .md:      23 files, 234 KiB (9.8%)
@@ -127,7 +127,7 @@ dirstat --dirs --depth 1
 dirstat --dirs --depth 2
 ```
 
-```
+```text
 Top directories:
   3) 'cmd'         234 KiB (10.2%)
   2) 'pkg'         456 KiB (19.9%)
@@ -147,7 +147,8 @@ inadvertently filtering out entire directory trees.
 > **Note:** `--depth` limits _how deep dirstat scans_, not how far results are aggregated.
 >
 > For example, `dirstat --dirs --depth 1` only includes files that exist directly inside the first-level directories.
-> If a folder (like `.folder/`) contains large files only in deeper subfolders, it won’t appear in the output because those subfolders are not scanned.
+> If a folder (like `.folder/`) contains large files only in deeper subfolders,
+> it won't appear in the output because those subfolders are not scanned.
 >
 > To include all nested data under `.folder/`, use a higher depth (e.g. `--depth 0` for unlimited).
 
