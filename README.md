@@ -189,6 +189,7 @@ dirstat -I --dirs --depth 2
 - `--debug` — Enable debug output
 - `--version`, `-v` — Show version and exit
 - `--init`, `-i` — Output shell integration script
+- `--shell-completion` - Generate shell completion script for specified shell (bash, zsh, fish, powershell)
 
 **Default exclusions:** `.*\.git/.*`, `.*node_modules/.*`
 
