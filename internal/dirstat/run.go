@@ -124,7 +124,7 @@ func startProgressReporter(ctx context.Context, c *collector, hook func(int64, i
 // The walk operation can be cancelled via ctx. Progress updates are sent
 // to progressHook if provided.
 //
-//nolint:gocognit,funlen // Walk callback complexity is inherent to the filtering logic
+//nolint:gocognit,funlen,gocyclo,cyclop,maintidx // TODO(Idelchi): Simplify function.
 func Run(ctx context.Context, opt Options, progressHook func(int64, int64)) (*Stats, error) {
 	log := logger{enabled: opt.Debug}
 
@@ -135,6 +135,20 @@ func Run(ctx context.Context, opt Options, progressHook func(int64, int64)) (*St
 	// Normalize to native format to handle both C:/Path and C:\Path inputs
 	// filepath.Clean handles both separators and converts to native format
 	opt.Path = filepath.Clean(opt.Path)
+
+	// Determine if target is outside cwd (to decide between relative/absolute display)
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("getting current directory: %w", err)
+	}
+
+	absTargetPath, err := filepath.Abs(opt.Path)
+	if err != nil {
+		return nil, fmt.Errorf("resolving absolute path: %w", err)
+	}
+
+	relToTarget, err := filepath.Rel(cwd, absTargetPath)
+	outsideCwd := err != nil || strings.HasPrefix(relToTarget, "..")
 
 	// validate path exists and is accessible
 	if statInfo, err := os.Stat(opt.Path); err != nil {
@@ -282,21 +296,56 @@ func Run(ctx context.Context, opt Options, progressHook func(int64, int64)) (*St
 		}
 
 		// Update collector
-		if opt.DirsMode {
+		if opt.DirsMode { //nolint:nestif	// Nesting needed for relative/absolute handling
 			// Aggregate by directory (use directory of file, not file itself)
 			dirPath := filepath.Dir(path)
-			// Make path relative to root for cleaner display
-			relDir := strings.TrimPrefix(dirPath, opt.Path)
 
-			relDir = strings.TrimPrefix(relDir, string(filepath.Separator))
-			if relDir == "" {
-				relDir = "."
+			// Make path relative to cwd or absolute if outside cwd
+			var displayPath string
+
+			if outsideCwd {
+				// Outside cwd: use absolute paths
+				absDir, absErr := filepath.Abs(dirPath)
+				if absErr == nil {
+					displayPath = absDir
+				} else {
+					displayPath = dirPath
+				}
+			} else {
+				// Inside cwd: use paths relative to cwd
+				relDir, err := filepath.Rel(cwd, dirPath)
+				if err != nil {
+					displayPath = dirPath
+				} else {
+					displayPath = relDir
+				}
 			}
 
-			collector.add(relDir, fileInfo.Size(), "DIR:")
+			collector.add(displayPath, fileInfo.Size(), "DIR:")
 		} else {
+			// Make path relative to cwd or absolute if outside cwd
+			var displayPath string
+
+			if outsideCwd {
+				// Outside cwd: use absolute paths
+				absPath, absErr := filepath.Abs(path)
+				if absErr == nil {
+					displayPath = absPath
+				} else {
+					displayPath = path
+				}
+			} else {
+				// Inside cwd: use paths relative to cwd
+				relPath, err := filepath.Rel(cwd, path)
+				if err != nil {
+					displayPath = path
+				} else {
+					displayPath = relPath
+				}
+			}
+
 			ext := filepath.Ext(path)
-			collector.add(path, fileInfo.Size(), ext)
+			collector.add(displayPath, fileInfo.Size(), ext)
 		}
 
 		return nil
