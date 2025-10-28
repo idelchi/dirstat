@@ -1,5 +1,4 @@
 # dirstat wrapper for zsh with fzf integration
-
 dirstat() {
   emulate -L zsh
   set -o pipefail
@@ -30,7 +29,7 @@ dirstat() {
       # Detect if we're in directory mode or file mode
       if grep -q "^Top directories:" <<< "${output}"; then
         header_pattern="Top directories:"
-        # In directory mode: show filenames (no awk strip)
+        # In directory mode: show filenames
         preview_cmd="command ls -Alh --group-directories-first --time-style=long-iso --color=always -- {1}"
       else
         header_pattern="Top files:"
@@ -38,15 +37,11 @@ dirstat() {
         preview_cmd="command ls -Alh --group-directories-first --time-style=long-iso --color=always -- {1} | awk '{NF--; print}'"
       fi
 
-      awk -v pattern="${header_pattern}" '
-        $0 ~ pattern {flag=1; next}
-        /^Stats/ {flag=0}
-        flag && /^  [0-9]+\)/ {
-          $1 = "";
-          sub(/^[ \t]+/, "");
-          match($0, /'\''([^'\'']*)'\''(.*)/, arr);
-          printf "%s\t%s\n", arr[1], arr[2]
-        }' <<< "${output}" | awk '{a[NR]=$0} END {for(i=NR;i>0;i--) print a[i]}' |
+      sed -n "/^${header_pattern}/,/^Stats/p" <<< "${output}" |
+      grep '^  [0-9]\+)' |
+      sed -E "s/^[[:space:]]*[0-9]+\)[[:space:]]+//" |
+      sed -E "s/'([^']*)'/\1\t/" |
+      awk '{a[NR]=$0} END {for(i=NR;i>0;i--) print a[i]}' |
       SHELL={{ .ZSH }} fzf --wrap --multi \
           --delimiter=$'\t' \
           --with-nth=1 \
@@ -54,7 +49,7 @@ dirstat() {
           --preview="$preview_cmd" |
       while IFS= read -r file; do
         local file_path="${file%%$'\t'*}"
-        file_path="${file_path//\'/\'\\\'\'}"
+        file_path="${file_path//\'/\\\'}"
         printf "rm -rf -- '%s'\n" "${file_path}"
       done
     )
